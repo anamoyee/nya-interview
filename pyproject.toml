@@ -1,0 +1,18 @@
+[project]
+name = 'nya-interview'
+dynamic = ['version']
+description = 'Create cli-based interviews easily'
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+# [project.scripts]
+# nya_interview = "nya_interview.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/nya_interview/_version.py"
+pattern = '__version__(?:: str)? *= *\"(?P<version>[^\"]+)\"'
