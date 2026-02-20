@@ -10,9 +10,9 @@ from typing import Any, Self
 import rich
 import rich.markup
 import rich.prompt
-import rich.text
 from nya_scope import Scope
 from rich.markup import escape as esc
+from rich.text import Text
 
 MISSING_IN_DICT = object()
 
@@ -82,11 +82,11 @@ class QuestionABC[T](abc.ABC):
 		return self
 
 	@abc.abstractmethod
-	def ask(self, iv: "Interview", /) -> T: ...
+	def _ask(self, iv: "Interview", /) -> T: ...
 
-	def ask_with_validation(self, iv: "Interview", /) -> T:
+	def _ask_with_validation(self, iv: "Interview", /) -> T:
 		try:
-			answer = self.ask(iv)
+			answer = self._ask(iv)
 		except (KeyboardInterrupt, EOFError) as e:
 			raise iv.UserExitException(e) from e
 
@@ -97,26 +97,23 @@ class QuestionABC[T](abc.ABC):
 			result = trans.validate(iv, self, answer)
 
 			if not result:
-				msg = trans.validate__invalid_message(iv, self, answer)
+				text = trans.validate__invalid_message(iv, self, answer)
 
-				if msg is not None:
-					msg = iv.prepend_total_indent_to_text(msg)
-
-				if msg is not None:
-					iv.rich_console.print(msg)
+				if text is not None:
+					iv.print_label(text)
 
 			return result  # short-circuit the all()
 
 		while not all(key(trans) for trans in self.transformations):  # 🏳️‍⚧️
 			try:
-				answer = self.ask(iv)
+				answer = self._ask(iv)
 			except (KeyboardInterrupt, EOFError) as e:
 				raise iv.UserExitException(e) from e
 
 		return answer
 
 	def invoke_subquestion[SubT](self, subq: "QuestionABC[SubT]", iv: "Interview", *, propagate_skip: bool = True) -> SubT:
-		ans = subq.ask_with_validation(iv)
+		ans = subq._ask_with_validation(iv)
 
 		if propagate_skip and subq.is_skipped:
 			self.is_skipped = True
@@ -209,7 +206,7 @@ class Interview(QuestionABC[dict[str, Any]]):
 
 		self.add_questions(**questions)
 
-	def set_indent(self, indent: str) -> Self:
+	def set_indent(self, indent: Textish) -> Self:
 		self._indent = indent
 		return self
 
@@ -287,7 +284,14 @@ class Interview(QuestionABC[dict[str, Any]]):
 	def flatten_to[T](self, name: str) -> "Question__.PostConvert[T, Any]":
 		return Question__.PostConvert(self, itemgetter(name))
 
-	def ask(self, parent_interview: Self | None = None) -> dict[str, Any]:
+	def print_label(self, msg: rich.text.Text) -> None:
+		if msg is not None:
+			msg = self.prepend_total_indent_to_text(msg)
+
+		if msg is not None:
+			self.rich_console.print(msg)
+
+	def _ask(self, parent_interview: Self | None) -> dict[str, Any]:
 		self.parent_interview = parent_interview
 		self._answers = {}
 
@@ -298,7 +302,7 @@ class Interview(QuestionABC[dict[str, Any]]):
 			if question.is_skipped:
 				continue
 
-			answer = question.ask_with_validation(self)
+			answer = question._ask_with_validation(self)
 
 			if question.is_skipped:
 				# this check is already present higher in this loop, however this one checks if during the process of asking this flag was set, in which case simply dont include the given result.
@@ -311,6 +315,9 @@ class Interview(QuestionABC[dict[str, Any]]):
 		finally:
 			self._answers = None
 			self.parent_interview = None
+
+	def ask(self) -> dict[str, Any]:
+		return self._ask(None)
 
 
 class QABCs__(Scope):
@@ -375,8 +382,8 @@ class QABCs__(Scope):
 class Question__(Scope):
 	@dataclass
 	class Label(QABCs__.WithText[None]):
-		def ask(self, iv: Interview) -> None:
-			iv.rich_console.print(iv.prepend_total_indent_to_text(self.text))
+		def _ask(self, iv: Interview) -> None:
+			iv.print_label(self.text)
 			self.is_skipped = True  # do not include in the results dict
 
 	@dataclass
@@ -388,7 +395,7 @@ class Question__(Scope):
 			if self.show_default and self.default is not None:
 				self.text.append(self.render_default(self))
 
-		def ask(self, iv: Interview) -> str:
+		def _ask(self, iv: Interview) -> str:
 			result = rich.prompt.Prompt.ask(iv.prepend_total_indent_to_text(self.text), console=iv.rich_console)
 
 			if self.default is not None:
@@ -419,7 +426,7 @@ class Question__(Scope):
 
 			return True
 
-		def ask(self, iv: Interview) -> int:
+		def _ask(self, iv: Interview) -> int:
 			ans = self.invoke_subquestion(self.str_question, iv)
 
 			return int(ans)
@@ -443,7 +450,7 @@ class Question__(Scope):
 
 			return True
 
-		def ask(self, iv: Interview) -> float:
+		def _ask(self, iv: Interview) -> float:
 			ans = self.invoke_subquestion(self.str_question, iv)
 
 			return float(ans)
@@ -466,7 +473,7 @@ class Question__(Scope):
 			if self.default is None:
 				self.str_question.with_valid_if_not_empty_answer()
 
-		def ask(self, iv: Interview) -> bool:
+		def _ask(self, iv: Interview) -> bool:
 			ans = self.invoke_subquestion(self.str_question, iv) or self.default_str
 
 			if ans is None:
@@ -497,7 +504,7 @@ class Question__(Scope):
 			super().__init__()
 			self.make_question = make_question
 
-		def ask(self, iv: Interview) -> T:
+		def _ask(self, iv: Interview) -> T:
 			return self.invoke_subquestion(self.make_question(iv), iv)
 
 	@dataclass
@@ -507,29 +514,64 @@ class Question__(Scope):
 		inner_question: QuestionABC[From]
 		post_converter: Callable[[From], To]
 
-		def ask(self, iv: Interview) -> To:
+		def _ask(self, iv: Interview) -> To:
 			return self.post_converter(self.invoke_subquestion(self.inner_question, iv))
 
 	@dataclass
 	class Tuple[T](QuestionABC[tuple[T, ...]]):
 		make_item_question: Callable[[tuple[T, ...]], QuestionABC[T]]
-		end_condition: Callable[[T], bool] = field(kw_only=True, default=lambda x: not x)
+		end_condition: Callable[[T], bool] = field(
+			kw_only=True,
+			# default=lambda x: not x,
+			default=lambda _: False,  # only make use of the ^D exit.
+		)
 		end_on_ctrl_d: bool = field(kw_only=True, default=True)
 		end_on_ctrl_c: bool = field(kw_only=True, default=False)
+		ensure_unique: bool = field(kw_only=True, default=False)
+		min_items: int = field(kw_only=True, default=0)
+		max_items: int = field(kw_only=True, default=2**31 - 1)
 
-		def ask(self, iv: Interview) -> tuple[T, ...]:
+		def get_error_text__too_few_items(self) -> Text:
+			return rich.markup.render(f"[red]You must input at least {self.min_items} item(s)")
+
+		def get_error_text__not_unique(self) -> Text:
+			return rich.markup.render(f"[red]You already provided this item, unique values are requested.")
+
+		def _ask(self, iv: Interview) -> tuple[T, ...]:
 			lst: list[T] = []
 
-			try:
-				while not self.end_condition(value := self.invoke_subquestion(self.make_item_question(tuple(lst)), iv)):
-					lst.append(value)
-			except Interview.UserExitException as e:
-				if (
-					   (self.end_on_ctrl_d and e.originates_from_ctrl_d())
-					or (self.end_on_ctrl_c and e.originates_from_ctrl_c())
-				):  # fmt: skip
-					pass
-				else:
+			while True:
+				try:
+					if len(lst) >= self.max_items:
+						break
+
+					if self.end_condition(item := self.invoke_subquestion(self.make_item_question(tuple(lst)), iv)):
+						if len(lst) < self.min_items:
+							iv.print_label(self.get_error_text__too_few_items())
+							continue
+
+						break
+
+					if self.ensure_unique and item in lst:
+						iv.print_label(self.get_error_text__not_unique())
+						continue
+
+					lst.append(item)
+				except Interview.UserExitException as e:
+					if (
+						   (self.end_on_ctrl_d and e.originates_from_ctrl_d())
+						or (self.end_on_ctrl_c and e.originates_from_ctrl_c())
+					):  # fmt: skip
+						if len(lst) < self.min_items:
+							iv.print_label(self.get_error_text__too_few_items())
+							continue
+
+						break
+
 					raise
 
 			return tuple(lst)
+
+		@staticmethod
+		def default_item_text(answers_to_far: tuple[Any, ...]):
+			return f"[b]\\[{len(answers_to_far)}]"
