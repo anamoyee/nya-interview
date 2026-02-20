@@ -4,7 +4,10 @@ dynamic = ['version']
 description = 'Create cli-based interviews easily'
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "nya-scope>=0.2.1",
+    "rich>=14.3.3",
+]
 
 # [project.scripts]
 # nya_interview = "nya_interview.__main__:main"
@@ -16,3 +19,8 @@ build-backend = "hatchling.build"
 [tool.hatch.version]
 path = "src/nya_interview/_version.py"
 pattern = '__version__(?:: str)? *= *\"(?P<version>[^\"]+)\"'
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+]
