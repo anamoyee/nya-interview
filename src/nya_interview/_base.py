@@ -6,21 +6,27 @@ from dataclasses import dataclass, field
 from numbers import Real
 from operator import itemgetter
 from typing import Any, Self
+from collections.abc import Generator
 
 import rich
 import rich.markup
 import rich.prompt
 from nya_scope import Scope
 from rich.markup import escape as esc
+from rich.style import Style
 from rich.text import Text
 
 MISSING_IN_DICT = object()
 
 
-type Textish = rich.text.TextType
+type Textish = Text | str  # fuck TextType
 
 
-def render_textish_to_text(textish: Textish) -> rich.text.Text:
+class NoColonPrompt(rich.prompt.Prompt):  # How is it going to digest stuff??
+	prompt_suffix = ""
+
+
+def render_textish_to_text(textish: Textish) -> Text:
 	if isinstance(textish, str):
 		textish = rich.markup.render(textish)
 
@@ -37,7 +43,7 @@ class BaseTransformation[T]:
 	def validate(self, iv: "Interview", q: "QuestionABC[T]", a: T) -> bool:
 		return True
 
-	def validate__invalid_message(self, iv: "Interview", q: "QuestionABC[T]", a: T) -> rich.text.Text | None:
+	def validate__invalid_message(self, iv: "Interview", q: "QuestionABC[T]", a: T) -> Text | None:
 		return rich.markup.render("[red]Invalid value, try again[/]")
 
 
@@ -57,7 +63,7 @@ class Transformation__(Scope):
 			self,
 			predicate: BaseTransformation.ValidateFn[T],
 			*,
-			msg: rich.text.Text | str | None = "[red]Invalid value, try again[/]",
+			msg: Text | str | None = "[red]Invalid value, try again[/]",
 		) -> None:
 			msg = render_textish_to_text(msg) if msg is not None else msg
 
@@ -138,11 +144,14 @@ class QuestionABC[T](abc.ABC):
 		self,
 		predicate: BaseTransformation.ValidateFn[T],
 		*,
-		msg: rich.text.Text | str | None = "[red]Invalid value, try again[/]",
+		msg: Text | str | None = "[red]Invalid value, try again[/]",
 	) -> Self:
 		msg = render_textish_to_text(msg) if msg is not None else msg
 
 		return self.with_transformation(Transformation__.ValidIf[T](predicate, msg=msg))
+
+	def map[R](self, fn: Callable[[T], R]) -> "Question__.PostConvert[R, T]":
+		return Question__.PostConvert(self, fn)
 
 
 class Interview(QuestionABC[dict[str, Any]]):
@@ -202,20 +211,61 @@ class Interview(QuestionABC[dict[str, Any]]):
 		self._answers: dict[str, Any] | None = None
 		self.parent_interview: Self | None = None
 		self._rich_console: rich.console.Console | None = None
-		self._indent = ""
+		self._indent = Text()
+		self._default_style = None
 
 		self.add_questions(**questions)
 
-	def set_indent(self, indent: Textish) -> Self:
-		self._indent = indent
+	def add_questions(self, /, **questions: QuestionABC[Any]) -> Self:
+		"""Add a question (or multiple at a time) to this Interview, if any keys would be overwritten, raise a Interview.KeyOccupiedError. This operation is atomic."""
+		occupied_keys = {k for k in questions if k in self.questions}
+
+		if occupied_keys:
+			raise Interview.KeyOccupiedError(keys=occupied_keys, interview=self)
+
+		self.questions.update(questions)
+
 		return self
 
-	@property
-	def total_indent_text(self) -> rich.text.Text:
-		return functools.reduce(rich.text.Text.append, (render_textish_to_text(iv._indent).copy() for iv in self.parent_interviews))
+	def set_default_style(self, style: str | Style | None = None) -> Self:
+		self._default_style = style
 
-	def prepend_total_indent_to_text(self, content_text: rich.text.Text) -> rich.text.Text:
-		return self.total_indent_text.append(content_text)
+		return self
+
+	def set_indent(self, indent: Textish = "") -> Self:
+		self._indent = render_textish_to_text(indent)
+
+		return self
+
+	def resolve_default_styles(self) -> Generator[str | Style, None, None]:
+		for iv in self.parent_interviews:
+			if iv._default_style is not None:
+				yield iv._default_style
+
+	def resolve_default_styles_and_apply_to(self, text: Text) -> Text:
+		spans_len_before = len(text.spans)
+		for style in self.resolve_default_styles():
+			text.stylize(style)
+		spans_len_after = len(text.spans)
+
+		for _ in range(spans_len_after - spans_len_before):
+			text.spans.insert(0, text.spans.pop())  # make this span least important
+
+		return text
+
+	def resolve_indent_styled(self) -> Text:
+		from tcrutils.console import c
+
+		return functools.reduce(
+			Text.append,
+			(
+				iv.resolve_default_styles_and_apply_to(iv._indent.copy())  #
+				for iv in self.parent_interviews
+			),
+		)
+
+	def prepend_total_indent_to_text(self, content_text: Text) -> Text:
+		return self.resolve_indent_styled().append(content_text)
 
 	@property
 	def parent_interviews(self) -> tuple["Interview", ...]:
@@ -228,17 +278,6 @@ class Interview(QuestionABC[dict[str, Any]]):
 			current = current.parent_interview
 
 		return tuple(ivs)
-
-	@property
-	def root_interview(self) -> Self:
-		"""Iteratively find the root-most `.parent_interview`."""
-
-		deepest_iv = self
-
-		while deepest_iv.parent_interview is not None:
-			deepest_iv = deepest_iv.parent_interview
-
-		return deepest_iv
 
 	@property
 	def answers(self):
@@ -270,21 +309,10 @@ class Interview(QuestionABC[dict[str, Any]]):
 
 		return rich.get_console()
 
-	def add_questions(self, /, **questions: QuestionABC[Any]) -> Self:
-		"""Add a question (or multiple at a time) to this Interview, if any keys would be overwritten, raise a Interview.KeyOccupiedError. This operation is atomic."""
-		occupied_keys = {k for k in questions if k in self.questions}
-
-		if occupied_keys:
-			raise Interview.KeyOccupiedError(keys=occupied_keys, interview=self)
-
-		self.questions.update(questions)
-
-		return self
-
 	def flatten_to[T](self, name: str) -> "Question__.PostConvert[T, Any]":
 		return Question__.PostConvert(self, itemgetter(name))
 
-	def print_label(self, msg: rich.text.Text) -> None:
+	def print_label(self, msg: Text) -> None:
 		if msg is not None:
 			msg = self.prepend_total_indent_to_text(msg)
 
@@ -324,7 +352,7 @@ class QABCs__(Scope):
 	@dataclass(init=False)
 	class WithText[T](QuestionABC[T]):
 		_textish: Textish
-		_text: rich.text.Text | None = field(init=False, default=None)
+		_text: Text | None = field(init=False, default=None)
 
 		@property
 		def text(self):
@@ -334,25 +362,25 @@ class QABCs__(Scope):
 			return self._text
 
 		@text.setter
-		def text(self, text: rich.text.Text):
+		def text(self, text: Text):
 			self._text = text
 
-	@dataclass
+	@dataclass(kw_only=True)
 	class WithDefault[T](QuestionABC[T]):
-		default: T | None = field(kw_only=True, default=None)
-		show_default: bool = field(kw_only=True, default=True)
-		render_default: Callable[[Self], rich.text.Text] = field(default=lambda self: rich.text.Text(f" [{self.default}]"))
+		default: T | None = field(default=None)
+		show_default: bool = field(default=True)
+		render_default: Callable[[Self], Text] = field(default=lambda self: Text(f" [{self.default}]"))
 
-	@dataclass
+	@dataclass(kw_only=True)
 	class WithChoices[T](QuestionABC[T]):
 		choices: Iterable[T] = field(default=())
-		show_choices: bool = field(kw_only=True, default=True)
-		render_choices: Callable[[Self], rich.text.Text] = field(default=lambda self: rich.text.Text(f" ({', '.join(str(x) for x in self.choices)})"))
+		show_choices: bool = field(default=True)
+		render_choices: Callable[[Self], Text] = field(default=lambda self: Text(f" ({'/'.join(str(x) for x in self.choices)})"))
 
 	@dataclass
 	class WithInvalidMsg[T](QuestionABC[T]):
 		invalid_msg: Textish = field(kw_only=True, default="[red]Provide a valid value")
-		_invalid_msg_text: rich.text.Text | None = field(init=False, default=None)
+		_invalid_msg_text: Text | None = field(init=False, default=None)
 
 		@property
 		def invalid_msg_text(self):
@@ -383,11 +411,14 @@ class Question__(Scope):
 	@dataclass
 	class Label(QABCs__.WithText[None]):
 		def _ask(self, iv: Interview) -> None:
-			iv.print_label(self.text)
+			iv.print_label(iv.resolve_default_styles_and_apply_to(self.text.copy()))
 			self.is_skipped = True  # do not include in the results dict
 
 	@dataclass
 	class Str(QABCs__.WithDefault[str], QABCs__.WithChoices[str], QABCs__.WithText[str]):
+		prefix: Text = field(kw_only=True, default_factory=lambda: Text(""))
+		suffix: Text = field(kw_only=True, default_factory=lambda: Text(": "))
+
 		def __post_init__(self):
 			if self.choices and self.show_choices:
 				self.text.append(self.render_choices(self))
@@ -396,14 +427,16 @@ class Question__(Scope):
 				self.text.append(self.render_default(self))
 
 		def _ask(self, iv: Interview) -> str:
-			result = rich.prompt.Prompt.ask(iv.prepend_total_indent_to_text(self.text), console=iv.rich_console)
+			text = iv.resolve_default_styles_and_apply_to(self.prefix.copy() + self.text.copy() + self.suffix.copy())
+
+			result = NoColonPrompt.ask(iv.prepend_total_indent_to_text(text), console=iv.rich_console)
 
 			if self.default is not None:
 				result = result or self.default
 
 			return result
 
-		def with_valid_if_not_empty_answer(self, *, msg: rich.text.Text | str | None = "[red]Provide a non-empty answer[/]") -> Self:
+		def with_valid_if_not_empty_answer(self, *, msg: Text | str | None = "[red]Provide a non-empty answer[/]") -> Self:
 			self.with_valid_if(lambda iv, q, a: bool(a), msg=msg)
 			return self
 

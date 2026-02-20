@@ -23,4 +23,6 @@ pattern = '__version__(?:: str)? *= *\"(?P<version>[^\"]+)\"'
 [dependency-groups]
 dev = [
     "mypy>=1.19.1",
+    "pytest>=9.0.2",
+    "tcrutils>=13.1.39",
 ]
