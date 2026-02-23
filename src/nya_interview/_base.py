@@ -478,14 +478,14 @@ class Question__(Scope):
 			def _str_is_valid_pep440_name(version: str) -> bool:
 				return re.match(r"^([1-9][0-9]*!)?(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*((a|b|rc)(0|[1-9][0-9]*))?(\.post(0|[1-9][0-9]*))?(\.dev(0|[1-9][0-9]*))?$", version) is not None
 
-			return self.with_valid_if(_str_is_valid_pep440_name, msg=msg)
+			return self.with_valid_if(lambda iv, q, a: _str_is_valid_pep440_name(a), msg=msg)
 
 		def as_GitBranchName(self, *, msg="[red]Provide a valid git branch name."):
 			def _str_is_valid_git_branch_name(git_branch_name: str) -> bool:
 				# src: https://stackoverflow.com/a/12093994
 				return re.match(r"^(?!.*/\.)(?!.*\.\.)(?!/)(?!.*//)(?!.*@\{)(?!.*\\)[^\000-\037\177 ~^:?*[]+(?<!\.lock)(?<!/)(?<!\.)$", git_branch_name) is not None
 
-			return self.with_valid_if(_str_is_valid_git_branch_name, msg=msg)
+			return self.with_valid_if(lambda iv, q, a: _str_is_valid_git_branch_name(a), msg=msg)
 
 	@dataclass
 	class Int(QABCs__.WithText[int], QABCs__.WithInvalidMsg[int], QABCs__.WithNumberOrdering[int]):  # type: ignore # <-- fuck you mypy, int is registered in Real ABC
