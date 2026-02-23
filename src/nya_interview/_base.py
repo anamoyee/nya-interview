@@ -14,6 +14,7 @@ import rich.markup
 import rich.prompt
 from nya_scope import Scope
 from rich.markup import escape as esc
+from rich.markup import render
 from rich.style import Style
 from rich.text import Text
 
@@ -379,13 +380,13 @@ class QABCs__(Scope):
 	class WithDefault[T](QuestionABC[T]):
 		default: T | None = field(default=None)
 		show_default: bool = field(default=True)
-		render_default: Callable[[Self], Text] = field(default=lambda self: Text(f" [{self.default}]"))
+		render_default: Callable[[Self], Text] = field(default=lambda self: render(f" \\[[default]{esc(f'{self.default}')}[/]]"))
 
 	@dataclass(kw_only=True)
 	class WithChoices[T](QuestionABC[T]):
 		choices: Iterable[T] = field(default=())
 		show_choices: bool = field(default=True)
-		render_choices: Callable[[Self], Text] = field(default=lambda self: Text(f" ({'/'.join(str(x) for x in self.choices)})"))
+		render_choices: Callable[[Self], Text] = field(default=lambda self: render(f" ([default]{esc('/'.join(str(x) for x in self.choices))}[/])"))
 
 	@dataclass
 	class WithInvalidMsg[T](QuestionABC[T]):
@@ -454,12 +455,9 @@ class Question__(Scope):
 			self.with_valid_if(lambda iv, q, a, pat=pattern: bool(re.search(pat, a)), msg=msg)
 			return self
 
-		def as_PyVersionTuple(self, require_python3: bool = True, override_default_with_sys_version_info: bool = False):
+		def as_PyVersionTuple(self, require_python3: bool = True, *, msg="[red]Provide a valid Python version."):
 			def _str_to_py_version(s: str) -> tuple[int, int] | tuple[int, int, int]:
 				return tuple(int(x) for x in s.split(".", maxsplit=2))
-
-			if override_default_with_sys_version_info:
-				self.default = ".".join(str(x) for x in sys.version_info)
 
 			if require_python3:
 				self.with_valid_if_regex_search(r"^3\.\d+(?:\.\d+)?$")
