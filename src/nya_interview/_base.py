@@ -460,9 +460,9 @@ class Question__(Scope):
 				return tuple(int(x) for x in s.split(".", maxsplit=2))
 
 			if require_python3:
-				self.with_valid_if_regex_search(r"^3\.\d+(?:\.\d+)?$")
+				self.with_valid_if_regex_search(r"^3\.\d+(?:\.\d+)?$", msg=msg)
 			else:
-				self.with_valid_if_regex_search(r"^\d+\.\d+(?:\.\d+)?$")
+				self.with_valid_if_regex_search(r"^\d+\.\d+(?:\.\d+)?$", msg=msg)
 
 			return self.map(_str_to_py_version)
 
