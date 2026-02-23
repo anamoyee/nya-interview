@@ -34,7 +34,7 @@ if __name__ == "__main__":  # interactive showcase
 				.set_indent("| ")
 				.flatten_to("tup")
 			),
-			lvl=Q__.Int("What is your lvl"),
+			lvl=Q__.Int("What is your lvl", default=18),
 			money=Q__.Float("Enter a fair amount").with_valid_if_positive(),
 			default_for_next_question=Q__.YesNo("Choose next question's default", default=True),
 			start_subinterview=Q__.Dynamic(

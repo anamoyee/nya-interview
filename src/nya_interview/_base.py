@@ -133,7 +133,7 @@ class QuestionABC[T](abc.ABC):
 
 		return self
 
-	def with_keep_if(self, predicate: BaseTransformation.TransformFn[bool]) -> Self:
+	def with_keep_if(self, predicate: Callable[["Interview", Self], bool]) -> Self:
 		return self.with_transformation(Transformation__.KeepIf[T](predicate))
 
 	def with_keep_if_previous_answer(self, of_question_named: str, predicate: Callable[[Any], bool] = bool) -> Self:
@@ -144,7 +144,7 @@ class QuestionABC[T](abc.ABC):
 
 	def with_valid_if(
 		self,
-		predicate: BaseTransformation.ValidateFn[T],
+		predicate: Callable[["Interview", Self, T], bool],
 		*,
 		msg: Text | str | None = "[red]Provide a valid value[/]",
 	) -> Self:
@@ -442,6 +442,9 @@ class Question__(Scope):
 			if self.choices and self.show_choices:
 				self.text.append(self.render_choices(self))
 
+			if self.choices:
+				self.with_valid_if(lambda iv, q, a: a in q.choices)
+
 			if self.show_default and self.default is not None:
 				self.text.append(self.render_default(self))
 
@@ -488,11 +491,14 @@ class Question__(Scope):
 			return self.with_valid_if(lambda iv, q, a: _str_is_valid_git_branch_name(a), msg=msg)
 
 	@dataclass
-	class Int(QABCs__.WithText[int], QABCs__.WithInvalidMsg[int], QABCs__.WithNumberOrdering[int]):  # type: ignore # <-- fuck you mypy, int is registered in Real ABC
+	class Int(QABCs__.WithText[int], QABCs__.WithDefault[int], QABCs__.WithInvalidMsg[int], QABCs__.WithNumberOrdering[int]):  # type: ignore # <-- fuck you mypy, int is registered in Real ABC
 		invalid_msg: Textish = field(kw_only=True, default="[red]Provide a valid integer")
 
 		def __post_init__(self) -> None:
-			self.str_question = Question__.Str(self.text).with_valid_if(
+			self.str_question = Question__.Str(
+				self.text,
+				default=str(self.default) if self.default is not None else None,
+			).with_valid_if(
 				lambda iv, q, a: self._str_is_int_parsable(a),
 				msg=self.invalid_msg_text,
 			)
