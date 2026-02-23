@@ -2,6 +2,7 @@ import abc
 import functools
 import os
 import re
+import sys
 from collections.abc import Callable, Generator, Iterable
 from dataclasses import dataclass, field
 from numbers import Real
@@ -452,6 +453,33 @@ class Question__(Scope):
 		def with_valid_if_regex_search(self, pattern: str | re.Pattern, *, msg: Text | str | None = "[red]Provide a valid value") -> Self:
 			self.with_valid_if(lambda iv, q, a, pat=pattern: bool(re.search(pat, a)), msg=msg)
 			return self
+
+		def as_PyVersionTuple(self, require_python3: bool = True, override_default_with_sys_version_info: bool = False):
+			def _str_to_py_version(s: str) -> tuple[int, int] | tuple[int, int, int]:
+				return tuple(int(x) for x in s.split(".", maxsplit=2))
+
+			if override_default_with_sys_version_info:
+				self.default = ".".join(str(x) for x in sys.version_info)
+
+			if require_python3:
+				self.with_valid_if_regex_search(r"^3\.\d+(?:\.\d+)?$")
+			else:
+				self.with_valid_if_regex_search(r"^\d+\.\d+(?:\.\d+)?$")
+
+			return self.map(_str_to_py_version)
+
+		def as_PEP440PackageVersion(self, *, msg="[red]Provide a valid PEP440 package version."):
+			def _str_is_valid_pep440_name(version: str) -> bool:
+				return re.match(r"^([1-9][0-9]*!)?(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*((a|b|rc)(0|[1-9][0-9]*))?(\.post(0|[1-9][0-9]*))?(\.dev(0|[1-9][0-9]*))?$", version) is not None
+
+			self.with_valid_if(_str_is_valid_pep440_name, msg=msg)
+
+		def as_GitBranchName(self, *, msg="[red]Provide a valid git branch name."):
+			def _str_is_valid_git_branch_name(git_branch_name: str) -> bool:
+				# src: https://stackoverflow.com/a/12093994
+				return re.match(r"^(?!.*/\.)(?!.*\.\.)(?!/)(?!.*//)(?!.*@\{)(?!.*\\)[^\000-\037\177 ~^:?*[]+(?<!\.lock)(?<!/)(?<!\.)$", git_branch_name) is not None
+
+			self.with_valid_if(_str_is_valid_git_branch_name, msg=msg)
 
 	@dataclass
 	class Int(QABCs__.WithText[int], QABCs__.WithInvalidMsg[int], QABCs__.WithNumberOrdering[int]):  # type: ignore # <-- fuck you mypy, int is registered in Real ABC

@@ -1,3 +1,5 @@
+import sys
+
 import rich
 
 from . import Interview as I
@@ -34,7 +36,7 @@ if __name__ == "__main__":  # interactive showcase
 			),
 			lvl=Q__.Int("What is your lvl"),
 			money=Q__.Float("Enter a fair amount").with_valid_if_positive(),
-			pyver=Q__.Str("Provide a python version").with_valid_if_regex_search(r"^\d+\.\d+(?:\.\d+)?$").map(___str_to_py_version),
+			pyver=Q__.Str("Provide a python version", default=".".join(str(x) for x in sys.version_info[:2])),
 			default_for_next_question=Q__.YesNo("Choose next question's default", default=True),
 			start_subinterview=Q__.Dynamic(
 				lambda iv: Q__.YesNo("Start a subinterview?", default=iv["default_for_next_question"]),
