@@ -199,6 +199,10 @@ class Interview(QuestionABC[dict[str, Any]]):
 
 			super().__init__(f"Cannot add questions with the following keys to {interview!r}, because they are already occupied by previously added questions: {keys!r}")
 
+	class NotAQuestionError(ValueError):
+		def __init__(self, *, key: str, value: Any) -> None:
+			super().__init__(f"Question added at key {key!r} is not of type {QuestionABC.__name__}. Found value of type {type(value).__name__!r}")
+
 	def __repr__(self) -> str:
 		return f"""
 {self.__class__.__name__}(
@@ -219,7 +223,11 @@ class Interview(QuestionABC[dict[str, Any]]):
 		self.add_questions(**questions)
 
 	def add_questions(self, /, **questions: QuestionABC[Any]) -> Self:
-		"""Add a question (or multiple at a time) to this Interview, if any keys would be overwritten, raise a Interview.KeyOccupiedError. This operation is atomic."""
+		"""Add a question (or multiple at a time) to this Interview, if any keys would be overwritten, raise a Interview.KeyOccupiedError. If questions are found not to be of type QuestionABC, raise a Interview.NotAQuestionError. This operation is atomic."""
+		for k, v in questions.items():
+			if not isinstance(v, QuestionABC):
+				raise Interview.NotAQuestionError(key=k, value=v)
+
 		occupied_keys = {k for k in questions if k in self.questions}
 
 		if occupied_keys:
@@ -470,14 +478,14 @@ class Question__(Scope):
 			def _str_is_valid_pep440_name(version: str) -> bool:
 				return re.match(r"^([1-9][0-9]*!)?(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*((a|b|rc)(0|[1-9][0-9]*))?(\.post(0|[1-9][0-9]*))?(\.dev(0|[1-9][0-9]*))?$", version) is not None
 
-			self.with_valid_if(_str_is_valid_pep440_name, msg=msg)
+			return self.with_valid_if(_str_is_valid_pep440_name, msg=msg)
 
 		def as_GitBranchName(self, *, msg="[red]Provide a valid git branch name."):
 			def _str_is_valid_git_branch_name(git_branch_name: str) -> bool:
 				# src: https://stackoverflow.com/a/12093994
 				return re.match(r"^(?!.*/\.)(?!.*\.\.)(?!/)(?!.*//)(?!.*@\{)(?!.*\\)[^\000-\037\177 ~^:?*[]+(?<!\.lock)(?<!/)(?<!\.)$", git_branch_name) is not None
 
-			self.with_valid_if(_str_is_valid_git_branch_name, msg=msg)
+			return self.with_valid_if(_str_is_valid_git_branch_name, msg=msg)
 
 	@dataclass
 	class Int(QABCs__.WithText[int], QABCs__.WithInvalidMsg[int], QABCs__.WithNumberOrdering[int]):  # type: ignore # <-- fuck you mypy, int is registered in Real ABC
