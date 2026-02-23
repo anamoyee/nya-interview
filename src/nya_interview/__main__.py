@@ -4,6 +4,10 @@ from . import Interview as I
 from . import Question__ as Q__
 
 if __name__ == "__main__":  # interactive showcase
+
+	def ___str_to_py_version(s: str) -> tuple[int, int] | tuple[int, int, int]:
+		return tuple(int(x) for x in s.split(".", maxsplit=2))
+
 	rich.get_console().print(
 		I(
 			name=(
@@ -30,6 +34,7 @@ if __name__ == "__main__":  # interactive showcase
 			),
 			lvl=Q__.Int("What is your lvl"),
 			money=Q__.Float("Enter a fair amount").with_valid_if_positive(),
+			pyver=Q__.Str("Provide a python version").with_valid_if_regex_search(r"^\d+\.\d+(?:\.\d+)?$").map(___str_to_py_version),
 			default_for_next_question=Q__.YesNo("Choose next question's default", default=True),
 			start_subinterview=Q__.Dynamic(
 				lambda iv: Q__.YesNo("Start a subinterview?", default=iv.answers["default_for_next_question"]),

@@ -1,12 +1,12 @@
 import abc
 import functools
 import os
-from collections.abc import Callable, Iterable
+import re
+from collections.abc import Callable, Generator, Iterable
 from dataclasses import dataclass, field
 from numbers import Real
 from operator import itemgetter
 from typing import Any, Self
-from collections.abc import Generator
 
 import rich
 import rich.markup
@@ -144,7 +144,7 @@ class QuestionABC[T](abc.ABC):
 		self,
 		predicate: BaseTransformation.ValidateFn[T],
 		*,
-		msg: Text | str | None = "[red]Invalid value, try again[/]",
+		msg: Text | str | None = "[red]Provide a valid value[/]",
 	) -> Self:
 		msg = render_textish_to_text(msg) if msg is not None else msg
 
@@ -436,8 +436,12 @@ class Question__(Scope):
 
 			return result
 
-		def with_valid_if_not_empty_answer(self, *, msg: Text | str | None = "[red]Provide a non-empty answer[/]") -> Self:
+		def with_valid_if_not_empty_answer(self, *, msg: Text | str | None = "[red]Provide a non-empty answer") -> Self:
 			self.with_valid_if(lambda iv, q, a: bool(a), msg=msg)
+			return self
+
+		def with_valid_if_regex_search(self, pattern: str | re.Pattern, *, msg: Text | str | None = "[red]Provide a valid value") -> Self:
+			self.with_valid_if(lambda iv, q, a, pat=pattern: bool(re.search(pat, a)), msg=msg)
 			return self
 
 	@dataclass
