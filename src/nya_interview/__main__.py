@@ -37,7 +37,7 @@ if __name__ == "__main__":  # interactive showcase
 			pyver=Q__.Str("Provide a python version").with_valid_if_regex_search(r"^\d+\.\d+(?:\.\d+)?$").map(___str_to_py_version),
 			default_for_next_question=Q__.YesNo("Choose next question's default", default=True),
 			start_subinterview=Q__.Dynamic(
-				lambda iv: Q__.YesNo("Start a subinterview?", default=iv.answers["default_for_next_question"]),
+				lambda iv: Q__.YesNo("Start a subinterview?", default=iv["default_for_next_question"]),
 			),
 			subinterview=(
 				I(

@@ -286,6 +286,15 @@ class Interview(QuestionABC[dict[str, Any]]):
 
 		return self._answers
 
+	def __getitem__(self, name: str) -> Any:
+		return self.answers[name]
+
+	def __setitem__(self, name: str, value: Any) -> None:
+		self.answers[name] = value
+
+	def __delitem__(self, name: str) -> None:
+		del self.answers[name]
+
 	def with_rich_console(self, rich_console: rich.console.Console | None) -> Self:
 		"""Provide a custom console used in this `Interview` and any child `Interview`s."""
 		self._rich_console = rich_console
